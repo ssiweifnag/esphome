@@ -16,8 +16,6 @@ from esphome.const import (
     UNIT_PARTS_PER_MILLION,
 )
 
-AUTO_LOAD = ["bme680"]
-
 CONF_BME680_ID = "bme680_id"
 
 bme680_ns = cg.esphome_ns.namespace("bme680")
@@ -55,33 +53,25 @@ CONFIG_SCHEMA = cv.Schema({
         accuracy_decimals=0,
         device_class=DEVICE_CLASS_AIR_QUALITY,
         state_class=STATE_CLASS_MEASUREMENT,
-    ).extend({
-        cv.GenerateID(): cv.declare_id(cg.global_ns.sensor_Sensor),
-    }),
+    ),
     cv.Optional("iaq_accuracy"): sensor.sensor_schema(
         accuracy_decimals=0,
         state_class=STATE_CLASS_MEASUREMENT,
-    ).extend({
-        cv.GenerateID(): cv.declare_id(cg.global_ns.sensor_Sensor),
-    }),
+    ),
     # VOC (Volatile Organic Compounds) sensor
     cv.Optional("voc"): sensor.sensor_schema(
         unit_of_measurement=UNIT_PARTS_PER_BILLION,
         accuracy_decimals=0,
         device_class=DEVICE_CLASS_AIR_QUALITY,
         state_class=STATE_CLASS_MEASUREMENT,
-    ).extend({
-        cv.GenerateID(): cv.declare_id(cg.global_ns.sensor_Sensor),
-    }),
+    ),
     # CO2 equivalent sensor
     cv.Optional("co2_equivalent"): sensor.sensor_schema(
         unit_of_measurement=UNIT_PARTS_PER_MILLION,
         accuracy_decimals=0,
         device_class=DEVICE_CLASS_CARBON_DIOXIDE,
         state_class=STATE_CLASS_MEASUREMENT,
-    ).extend({
-        cv.GenerateID(): cv.declare_id(cg.global_ns.sensor_Sensor),
-    }),
+    ),
 }).extend(cv.polling_component_schema("60s")).extend(i2c.i2c_device_schema(0x77))
 
 
