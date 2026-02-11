@@ -103,7 +103,7 @@ class BME680Component : public PollingComponent, public i2c::I2CDevice {
    * @param iaq_sensor The sensor to publish IAQ index values.
    */
   void set_iaq_sensor(sensor::Sensor *iaq_sensor) { iaq_sensor_ = iaq_sensor; }
-  
+
   /** Set the IAQ accuracy sensor.
    *
    * Publishes the accuracy/stability of IAQ reading (0-3).
@@ -186,8 +186,8 @@ class BME680Component : public PollingComponent, public i2c::I2CDevice {
   sensor::Sensor *co2_equivalent_sensor_{nullptr};
 
   // IAQ algorithm state
-  float iaq_gas_baseline_{100000.0f};      // Baseline gas resistance for IAQ calculation
-  float iaq_humidity_baseline_{50.0f};       // Baseline humidity for IAQ calculation
+  float iaq_gas_baseline_{100000.0f};   // Baseline gas resistance for IAQ calculation
+  float iaq_humidity_baseline_{50.0f};  // Baseline humidity for IAQ calculation
   float iaq_gas_score_{100.0f};
   uint8_t iaq_convergence_count_{0};
   static constexpr uint8_t IAQ_CONVERGENCE_THRESHOLD = 50;  // Samples needed for stable IAQ
