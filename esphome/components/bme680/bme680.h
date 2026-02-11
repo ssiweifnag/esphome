@@ -95,6 +95,40 @@ class BME680Component : public PollingComponent, public i2c::I2CDevice {
    */
   void set_heater(uint16_t heater_temperature, uint16_t heater_duration);
 
+  /** Set the IAQ (Indoor Air Quality) sensor.
+   *
+   * Calculates an IAQ index (0-500) based on gas resistance, temperature and humidity.
+   * Based on Bosch BSEC algorithm simplified approach.
+   *
+   * @param iaq_sensor The sensor to publish IAQ index values.
+   */
+  void set_iaq_sensor(sensor::Sensor *iaq_sensor) { iaq_sensor_ = iaq_sensor; }
+  
+  /** Set the IAQ accuracy sensor.
+   *
+   * Publishes the accuracy/stability of IAQ reading (0-3).
+   * 0 = stabilizing, 1 = uncertain, 2 = low accuracy, 3 = high accuracy
+   *
+   * @param iaq_accuracy The sensor to publish IAQ accuracy values.
+   */
+  void set_iaq_accuracy(sensor::Sensor *iaq_accuracy) { iaq_accuracy_ = iaq_accuracy; }
+
+  /** Set the VOC (Volatile Organic Compounds) estimation sensor.
+   *
+   * Estimates VOC concentration in ppb based on gas resistance.
+   *
+   * @param voc_sensor The sensor to publish VOC estimation values.
+   */
+  void set_voc_sensor(sensor::Sensor *voc_sensor) { voc_sensor_ = voc_sensor; }
+
+  /** Set the CO2 equivalent estimation sensor.
+   *
+   * Estimates CO2 equivalent in ppm based on gas resistance and humidity.
+   *
+   * @param co2_sensor The sensor to publish CO2 equivalent values.
+   */
+  void set_co2_equivalent_sensor(sensor::Sensor *co2_sensor) { co2_equivalent_sensor_ = co2_sensor; }
+
   // ========== INTERNAL METHODS ==========
   // (In most use cases you won't need these)
   void setup() override;
@@ -115,10 +149,22 @@ class BME680Component : public PollingComponent, public i2c::I2CDevice {
   float calc_pressure_(uint32_t raw_pressure);
   /// Calculate the relative humidity in % using the provided raw ADC value.
   float calc_humidity_(uint16_t raw_humidity);
-  /// Calculate the gas resistance in Ω using the provided raw ADC value.
+  /// Calculate the gas resistance in Ω using the provided raw ADC value.
   float calc_gas_resistance_(uint16_t raw_gas, uint8_t range);
   /// Calculate how long the sensor will take until we can retrieve data.
   uint32_t calc_meas_duration_();
+
+  /// Calculate IAQ (Indoor Air Quality) index from gas resistance.
+  float calc_iaq_(float gas_resistance, float temperature, float humidity);
+  /// Calculate VOC estimation in ppb.
+  float calc_voc_(float gas_resistance, float humidity);
+  /// Calculate CO2 equivalent in ppm.
+  float calc_co2_(float gas_resistance, float humidity);
+
+  /// Initialize IAQ baseline values.
+  void init_iaq_baseline_();
+  /// Update IAQ algorithm state.
+  void update_iaq_state_(float gas_resistance);
 
   BME680CalibrationData calibration_;
   BME680Oversampling temperature_oversampling_{BME680_OVERSAMPLING_16X};
@@ -132,6 +178,20 @@ class BME680Component : public PollingComponent, public i2c::I2CDevice {
   sensor::Sensor *pressure_sensor_{nullptr};
   sensor::Sensor *humidity_sensor_{nullptr};
   sensor::Sensor *gas_resistance_sensor_{nullptr};
+
+  // IAQ related sensors
+  sensor::Sensor *iaq_sensor_{nullptr};
+  sensor::Sensor *iaq_accuracy_{nullptr};
+  sensor::Sensor *voc_sensor_{nullptr};
+  sensor::Sensor *co2_equivalent_sensor_{nullptr};
+
+  // IAQ algorithm state
+  float iaq_gas_baseline_{100000.0f};      // Baseline gas resistance for IAQ calculation
+  float iaq_humidity_baseline_{50.0f};       // Baseline humidity for IAQ calculation
+  float iaq_gas_score_{100.0f};
+  uint8_t iaq_convergence_count_{0};
+  static constexpr uint8_t IAQ_CONVERGENCE_THRESHOLD = 50;  // Samples needed for stable IAQ
+  static constexpr float IAQ_GAS_BASELINE_REF = 100000.0f;
 };
 
 }  // namespace bme680

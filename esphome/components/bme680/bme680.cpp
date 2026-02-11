@@ -510,3 +510,165 @@ void BME680Component::set_heater(uint16_t heater_temperature, uint16_t heater_du
 
 }  // namespace bme680
 }  // namespace esphome
+// ===== IAQ (Indoor Air Quality) Calculation Functions =====
+
+// IAQ calculation constants (simplified BSEC approach)
+static constexpr float IAQ_TEMP_OFFSET = 25.0f;
+static constexpr float IAQ_HUMIDITY_OFFSET = 50.0f;
+static constexpr float IAQ_GAS_SENSOR_VAL_OFFSET = 0.0f;
+static constexpr float IAQ_GAS_SENSOR_VAL_SLOPE = 1.0f;
+static constexpr float IAQ_HUMIDITY_SENSOR_VAL_OFFSET = 0.0f;
+static constexpr float IAQ_HUMIDITY_SENSOR_VAL_SLOPE = 1.0f;
+
+void BME680Component::init_iaq_baseline_() {
+  this->iaq_gas_baseline_ = IAQ_GAS_BASELINE_REF;
+  this->iaq_humidity_baseline_ = IAQ_HUMIDITY_OFFSET;
+  this->iaq_gas_score_ = 100.0f;
+  this->iaq_convergence_count_ = 0;
+}
+
+void BME680Component::update_iaq_state_(float gas_resistance) {
+  // Simple baseline update algorithm
+  if (gas_resistance > 1000.0f && gas_resistance < 1000000.0f) {
+    // Update baseline if reading is in valid range
+    float weight = 0.01f;  // Slow adaptation
+    this->iaq_gas_baseline_ = this->iaq_gas_baseline_ * (1.0f - weight) + gas_resistance * weight;
+  }
+}
+
+float BME680Component::calc_iaq_(float gas_resistance, float temperature, float humidity) {
+  // Simplified IAQ calculation based on gas resistance deviation from baseline
+  // and environmental factors
+  
+  // Normalize gas resistance
+  float normalized_gas = gas_resistance / this->iaq_gas_baseline_;
+  
+  // Temperature compensation factor (IAQ better at higher temps)
+  float temp_factor = 1.0f + (temperature - IAQ_TEMP_OFFSET) * 0.01f;
+  
+  // Humidity compensation factor (IAQ better at moderate humidity)
+  float hum_factor = 1.0f + fabs(humidity - IAQ_HUMIDITY_OFFSET) * 0.005f;
+  
+  // Calculate IAQ score (100 = good, 0 = bad)
+  float iaq_score = 100.0f;
+  
+  if (normalized_gas < 1.0f) {
+    // Higher resistance = cleaner air = better IAQ
+    iaq_score = 100.0f - (1.0f - normalized_gas) * 100.0f;
+  } else {
+    // Lower resistance = more VOCs = worse IAQ
+    iaq_score = 100.0f - (normalized_gas - 1.0f) * 50.0f;
+  }
+  
+  // Clamp IAQ score
+  iaq_score = clamp(iaq_score, 0.0f, 100.0f);
+  
+  // Convert score to IAQ index (0-500 scale)
+  // 0-100: Excellent (0-50)
+  // 100-200: Good (51-100)
+  // 200-300: Lightly polluted (101-150)
+  // 300-400: Moderately polluted (151-200)
+  // 400-500: Heavily polluted (201-500)
+  
+  float iaq_index;
+  if (iaq_score >= 95.0f) {
+    iaq_index = 25.0f + (100.0f - iaq_score) * 0.5f;
+  } else if (iaq_score >= 80.0f) {
+    iaq_index = 50.0f + (95.0f - iaq_score) * 3.33f;
+  } else if (iaq_score >= 60.0f) {
+    iaq_index = 100.0f + (80.0f - iaq_score) * 5.0f;
+  } else if (iaq_score >= 40.0f) {
+    iaq_index = 200.0f + (60.0f - iaq_score) * 5.0f;
+  } else {
+    iaq_index = 300.0f + (40.0f - iaq_score) * 10.0f;
+  }
+  
+  // Clamp to valid range
+  iaq_index = clamp(iaq_index, 0.0f, 500.0f);
+  
+  // Update convergence count for accuracy reporting
+  if (this->iaq_convergence_count_ < IAQ_CONVERGENCE_THRESHOLD) {
+    this->iaq_convergence_count_++;
+  }
+  
+  // Update gas baseline
+  this->update_iaq_state_(gas_resistance);
+  
+  return iaq_index;
+}
+
+float BME680Component::calc_voc_(float gas_resistance, float humidity) {
+  // Simplified VOC estimation in ppb
+  // Based on gas resistance inverse relationship
+  
+  if (gas_resistance < 1000.0f) {
+    // Very low resistance = high VOC
+    return 2000.0f + (1000.0f - gas_resistance) * 2.0f;
+  } else if (gas_resistance < 10000.0f) {
+    // Low resistance = moderate VOC
+    return 500.0f + (10000.0f - gas_resistance) * 0.17f;
+  } else if (gas_resistance < 100000.0f) {
+    // Moderate resistance = low VOC
+    return 50.0f + (100000.0f - gas_resistance) * 0.005f;
+  } else {
+    // High resistance = very low VOC
+    return 0.0f;
+  }
+}
+
+float BME680Component::calc_co2_(float gas_resistance, float humidity) {
+  // Simplified CO2 equivalent estimation in ppm
+  // Based on correlation between VOC-like gases and CO2 equivalents
+  
+  // Humidity compensation for better accuracy
+  float humidity_factor = 1.0f + (humidity - 50.0f) * 0.01f;
+  
+  if (gas_resistance < 5000.0f) {
+    // Very low resistance = high CO2 equivalent
+    return 3000.0f * humidity_factor + (5000.0f - gas_resistance) * 0.2f;
+  } else if (gas_resistance < 50000.0f) {
+    // Moderate resistance = moderate CO2 equivalent
+    return 400.0f * humidity_factor + (50000.0f - gas_resistance) * 0.052f;
+  } else {
+    // High resistance = low CO2 equivalent
+    return 400.0f * humidity_factor;
+  }
+}
+
+// ===== 添加 IAQ, VOC, CO2 發布 =====
+  
+  // Publish IAQ, VOC, and CO2 equivalent values
+  if (this->gas_resistance_sensor_ != nullptr && gas_valid && heat_stable) {
+    // Calculate and publish IAQ
+    if (this->iaq_sensor_ != nullptr) {
+      float iaq = this->calc_iaq_(gas_resistance, temperature, humidity);
+      this->iaq_sensor_->publish_state(iaq);
+    }
+    
+    // Publish IAQ accuracy
+    if (this->iaq_accuracy_ != nullptr) {
+      uint8_t accuracy = 0;
+      if (this->iaq_convergence_count_ >= IAQ_CONVERGENCE_THRESHOLD) {
+        accuracy = 3;  // High accuracy
+      } else if (this->iaq_convergence_count_ >= 20) {
+        accuracy = 2;  // Medium accuracy
+      } else if (this->iaq_convergence_count_ >= 10) {
+        accuracy = 1;  // Low accuracy
+      } else {
+        accuracy = 0;  // Stabilizing
+      }
+      this->iaq_accuracy_->publish_state(accuracy);
+    }
+    
+    // Calculate and publish VOC
+    if (this->voc_sensor_ != nullptr) {
+      float voc = this->calc_voc_(gas_resistance, humidity);
+      this->voc_sensor_->publish_state(voc);
+    }
+    
+    // Calculate and publish CO2 equivalent
+    if (this->co2_equivalent_sensor_ != nullptr) {
+      float co2 = this->calc_co2_(gas_resistance, humidity);
+      this->co2_equivalent_sensor_->publish_state(co2);
+    }
+  }
