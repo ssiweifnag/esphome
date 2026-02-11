@@ -5,14 +5,14 @@
 namespace esphome {
 namespace bme680 {
 
-static const char *TAG = "bme680";
+static const char *const TAG = "bme680";
 
 void BME680Component::setup() {
   ESP_LOGCONFIG(TAG, "Setting up BME680...");
 
   // Initialize BME680
   int8_t rslt = BME680_OK;
-
+  
   dev.intf_ptr = &wire;
   dev.intf = BME680_I2C_INTF;
   dev.read = [](uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr) -> int8_t {
@@ -28,15 +28,17 @@ void BME680Component::setup() {
     }
     return BME680_OK;
   };
-
+  
   dev.write = [](const uint8_t *reg_data, uint32_t len, void *intf_ptr) -> int8_t {
     TwoWire *wire = static_cast<TwoWire *>(intf_ptr);
     wire->beginTransmission(BME680_I2C_ADDR);
     wire->write(reg_data, len);
     return wire->endTransmission() == 0 ? BME680_OK : BME680_E_COM_FAIL;
   };
-
-  dev.delay_ms = [](uint32_t ms, void *intf_ptr) -> void { delay(ms); };
+  
+  dev.delay_ms = [](uint32_t ms, void *intf_ptr) -> void {
+    delay(ms);
+  };
 
   rslt = bme680_init(&dev);
   if (rslt != BME680_OK) {
@@ -47,7 +49,7 @@ void BME680Component::setup() {
 
   // Configure sensor
   uint8_t set_required_settings;
-
+  
   // Set the temperature, pressure and humidity settings
   dev.conf.tph_sett.os_hum = BME680_OS_2X;
   dev.conf.tph_sett.os_pres = BME680_OS_4X;
